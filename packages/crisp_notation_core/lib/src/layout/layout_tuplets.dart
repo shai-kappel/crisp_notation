@@ -40,7 +40,16 @@ extension _Tuplets on _LayoutBuilder {
   /// Nested spans each draw their own bracket, the inner ones first: each
   /// bracket keeps clear of the ink already drawn, so an outer bracket stacks
   /// beyond the inner one instead of over it.
-  void _layoutTuplets(Measure measure, Map<int, int> tieIndexOf) {
+  ///
+  /// R10: [drawnBeams] holds the (first, last) element indices of each beam
+  /// group drawn in a single-voice measure. A voice-1 span whose start and end
+  /// are the first and last notes of one such group is fully beamed: it keeps
+  /// its digit and draws no bracket lines. Beam groups skip rests, so a rest
+  /// inside the span does not break this, but a span that starts or ends on a
+  /// rest, or is split across two beams, keeps its bracket. The multi-voice
+  /// path passes no groups, so its brackets (and inner voices') are unchanged.
+  void _layoutTuplets(Measure measure, Map<int, int> tieIndexOf,
+      {Set<(int, int)> drawnBeams = const {}}) {
     for (final span in TupletSpan.outermostFirst(measure.tuplets).reversed) {
       if (span.hidden) continue; // times its notes, draws nothing
       // Inner voices (2-4) don't have a tieIndexOf map; draw their brackets from
@@ -75,7 +84,10 @@ extension _Tuplets on _LayoutBuilder {
             below: false);
         hookDir = 1;
       }
-      _drawTupletBracket(x1, x2, bracketY, hookDir, span.actual);
+      final fullyBeamed =
+          drawnBeams.contains((span.startIndex, span.endIndex));
+      _drawTupletBracket(x1, x2, bracketY, hookDir, span.actual,
+          lines: !fullyBeamed);
     }
   }
 
@@ -123,8 +135,11 @@ extension _Tuplets on _LayoutBuilder {
 
   /// Emits the bracket lines + ratio digit(s) for a tuplet spanning [x1]..[x2]
   /// with its horizontal at [bracketY] and hooks in direction [hookDir].
+  /// With [lines] false only the digit(s) are drawn (R10: a fully beamed
+  /// group).
   void _drawTupletBracket(
-      double x1, double x2, double bracketY, double hookDir, int actual) {
+      double x1, double x2, double bracketY, double hookDir, int actual,
+      {bool lines = true}) {
     final digits = [
       for (final ch in actual.toString().split(''))
         SmuflGlyph.tupletDigit(int.parse(ch)),
@@ -135,12 +150,14 @@ extension _Tuplets on _LayoutBuilder {
     final midX = (x1 + x2) / 2;
     final gap = digitsWidth / 2 + 0.3;
 
-    _addLine(Point(x1, bracketY), Point(midX - gap, bracketY), thickness);
-    _addLine(Point(midX + gap, bracketY), Point(x2, bracketY), thickness);
-    _addLine(
-        Point(x1, bracketY), Point(x1, bracketY + hookDir * 0.7), thickness);
-    _addLine(
-        Point(x2, bracketY), Point(x2, bracketY + hookDir * 0.7), thickness);
+    if (lines) {
+      _addLine(Point(x1, bracketY), Point(midX - gap, bracketY), thickness);
+      _addLine(Point(midX + gap, bracketY), Point(x2, bracketY), thickness);
+      _addLine(
+          Point(x1, bracketY), Point(x1, bracketY + hookDir * 0.7), thickness);
+      _addLine(
+          Point(x2, bracketY), Point(x2, bracketY + hookDir * 0.7), thickness);
+    }
 
     var digitX = midX - digitsWidth / 2;
     for (final glyph in digits) {

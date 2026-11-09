@@ -856,6 +856,99 @@ class _LayoutBuilder {
 
   // ---------------------------------------------------------------- measure
 
+  /// R10 beaming: a tuplet whose notes are all beamable is beamed as one
+  /// group across its whole span, beat boundaries inside the span
+  /// notwithstanding; the bracket rule is unchanged.
+  ///
+  /// Applies to meter beaming of a single-voice measure only: a score that
+  /// states its beams keeps them. A voice-1 span qualifies when it holds no
+  /// other span, every note in it can carry a beam (eighth or shorter, not
+  /// cross-staff, not on a cross-measure, feathered or slanted beam), and it
+  /// has at least two notes. Rests inside the span are skipped, as meter
+  /// beaming skips them. The span's notes replace whatever groups the meter
+  /// split them into.
+  List<_BeamGroup> _beamTupletsWhole(
+      Measure measure, List<_BeamGroup> groups) {
+    if (score.beamsExplicit) return groups;
+    final elements = measure.elements;
+    final spans = [
+      for (final span in measure.tuplets)
+        if (span.voice == 0) span,
+    ];
+    if (spans.isEmpty) return groups;
+    final onsets = <Fraction>[];
+    var onset = _metricStart(measure);
+    for (var i = 0; i < elements.length; i++) {
+      onsets.add(onset);
+      onset += measure.effectiveDurationAt(i);
+    }
+    final result = [...groups];
+    for (final span in spans) {
+      final holdsAnother = spans.any((o) =>
+          !identical(o, span) &&
+          o != span &&
+          span.startIndex <= o.startIndex &&
+          o.endIndex <= span.endIndex);
+      if (holdsAnother) continue;
+      final run = <int>[];
+      var beamable = true;
+      for (var i = span.startIndex; i <= span.endIndex; i++) {
+        final element = elements[i];
+        if (element is RestElement) continue;
+        if (element is! NoteElement ||
+            _LayoutBuilder._beamCountOf(element.duration.base) < 1 ||
+            _isCrossStaff(element) ||
+            _crossBeamOf.containsKey(element.id) ||
+            _crossMeasureIds.contains(element.id)) {
+          beamable = false;
+          break;
+        }
+        run.add(i);
+      }
+      if (!beamable || run.length < 2) continue;
+      final overlapping = [
+        for (final g in result)
+          if (g.indices.any((i) => i >= span.startIndex && i <= span.endIndex))
+            g,
+      ];
+      if (overlapping.any((g) => g.feather != null || g.forcedSlant != null)) {
+        continue;
+      }
+      if (overlapping.length == 1 &&
+          overlapping.single.indices.length == run.length) {
+        continue; // already one beam over the whole span
+      }
+      // Stem direction as meter beaming picks it: a stated stem wins,
+      // otherwise the note farthest from the middle line decides.
+      bool? stated;
+      for (final i in run) {
+        if ((elements[i] as NoteElement).stemsDown case final down?) {
+          stated = down;
+          break;
+        }
+      }
+      var maxAbove = -100;
+      var maxBelow = -100;
+      for (final i in run) {
+        for (final pitch in (elements[i] as NoteElement).pitches) {
+          final p = pitch.staffPosition(_clef);
+          if (p - 4 > maxAbove) maxAbove = p - 4;
+          if (4 - p > maxBelow) maxBelow = 4 - p;
+        }
+      }
+      final merged = _BeamGroup(run,
+          onsets: [for (final i in run) onsets[i]],
+          stemsDown: stated ?? maxAbove >= maxBelow);
+      var at = overlapping.isEmpty
+          ? result.indexWhere((g) => g.indices.first > span.startIndex)
+          : result.indexOf(overlapping.first);
+      if (at < 0) at = result.length;
+      result.removeWhere(overlapping.contains);
+      result.insert(min(at, result.length), merged);
+    }
+    return result;
+  }
+
   /// Whether [element]'s stem is deferred to the cross-staff beam pass.
   bool _isCrossStaff(NoteElement element) =>
       element.id != null && deferredStems.containsKey(element.id);
@@ -895,11 +988,14 @@ class _LayoutBuilder {
       _layoutMultiVoiceMeasure(measure, measureIndex);
       return;
     }
-    final groups = _computeBeamGroups(
-      measure.elements,
-      effectiveAt: measure.effectiveDurationAt,
-      tuplets: measure.tuplets,
-      start: _metricStart(measure),
+    final groups = _beamTupletsWhole(
+      measure,
+      _computeBeamGroups(
+        measure.elements,
+        effectiveAt: measure.effectiveDurationAt,
+        tuplets: measure.tuplets,
+        start: _metricStart(measure),
+      ),
     );
     final beamedIndex = <int, _BeamGroup>{
       for (final group in groups)
@@ -991,6 +1087,10 @@ class _LayoutBuilder {
       if (endX != null) _x = max(_x, measureContentStart + endX);
     }
 
+    // R10: the (first, last) element indices of every beam group drawn in
+    // this measure, so a tuplet span that one beam covers end to end drops
+    // its bracket and keeps its digit.
+    final drawnBeams = <(int, int)>{};
     for (final group in groups) {
       final notes = deferred[group];
       if (notes != null && notes.length >= 2) {
@@ -1001,12 +1101,13 @@ class _LayoutBuilder {
           feather: group.feather,
           forcedSlant: group.forcedSlant,
         );
+        drawnBeams.add((group.indices.first, group.indices.last));
       }
     }
     _layoutArticulations(measure.elements, tieIndexOf);
     _layoutFingerings(measure.elements, tieIndexOf);
     _layoutArpeggios(measure.elements, tieIndexOf);
-    _layoutTuplets(measure, tieIndexOf);
+    _layoutTuplets(measure, tieIndexOf, drawnBeams: drawnBeams);
   }
 
   /// v0.4.1 / v0.4.4: a measure with two to four voices. Odd-indexed voices
