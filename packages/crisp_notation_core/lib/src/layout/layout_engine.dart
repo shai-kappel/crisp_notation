@@ -1674,7 +1674,12 @@ class _LayoutBuilder {
     // go left of its accidentals once those are placed, not at the column,
     // where they stood on the head.
     final graceLater = !gracesDrawn && noteXOverride != null;
-    if (!gracesDrawn && !graceLater) _layoutGraceNotes(element, id);
+    // Where this note's grace slur starts (see [_layoutGraceNotes]): drawn
+    // below, once the heads are placed, in this same call.
+    ({double x, double y})? graceSlurStart;
+    if (!gracesDrawn && !graceLater) {
+      graceSlurStart = _layoutGraceNotes(element, id);
+    }
 
     final base = element.duration.base;
     // Cue / ossia notes draw small: head, stem, flag and dots are scaled.
@@ -1738,7 +1743,7 @@ class _LayoutBuilder {
     if (graceLater && element.graceNotes.isNotEmpty) {
       final x = _x;
       _x = noteX - leftHead - acc.preWidth - _graceWidth(element);
-      _layoutGraceNotes(element, id);
+      graceSlurStart = _layoutGraceNotes(element, id);
       _x = x;
     }
 
@@ -1825,6 +1830,24 @@ class _LayoutBuilder {
           Point(a.x + (b.x - a.x) * 0.7, a.y + (b.y - a.y) * 0.7 + 0.3),
           b,
           0.14,
+        );
+      }
+    }
+
+    // A grace slur, for either grace style: a small curve under the graces
+    // (their stems go up) from the first grace head to the principal's
+    // lowest head, ending left of that head, clear of a down-stem.
+    if (graceSlurStart != null) {
+      final (:x, :y) = graceSlurStart;
+      final x2 = columnX[0] - 0.1;
+      if (x2 > x + 0.1) {
+        final a = Point(x, y + 0.4), b = Point(x2, _yOf(positions[0]) + 0.5);
+        _addCurve(
+          a,
+          Point(a.x + (b.x - a.x) * 0.3, a.y + (b.y - a.y) * 0.3 + 0.35),
+          Point(a.x + (b.x - a.x) * 0.7, a.y + (b.y - a.y) * 0.7 + 0.35),
+          b,
+          0.12,
         );
       }
     }
@@ -1987,8 +2010,10 @@ class _LayoutBuilder {
   }
 
   /// v0.3.6: grace notes — a group of small (0.6×) eighths before the host
-  /// element, stems always up; an acciaccatura slashes the first stem, an
-  /// appoggiatura does not.
+  /// element, stems up. A single grace carries a flag; a group of two or
+  /// more is joined by a grace-scaled beam instead. An acciaccatura's slash
+  /// crosses the single grace's stem and flag, or a beamed group's first
+  /// stem and beam; an appoggiatura has none.
   static const _graceScale = 0.6;
 
   /// The width [_layoutGraceNotes] advances past [element]'s grace notes:
@@ -2003,9 +2028,15 @@ class _LayoutBuilder {
   /// [stemsDown], as the lower of two voices that both lead in with graces
   /// sets them (stems up, the lower voice's grace stems ran through the
   /// upper voice's grace heads).
-  void _layoutGraceNotes(NoteElement element, String? id,
+  ///
+  /// Returns where a grace slur to the principal starts: the first grace
+  /// head's centre x and y. Only the single-voice path ([_layoutNote], which
+  /// draws the principal's heads in the same call) draws that slur; the
+  /// multi-voice grid paths ignore the result, so no slur is ever left
+  /// waiting for a later note.
+  ({double x, double y})? _layoutGraceNotes(NoteElement element, String? id,
       {bool stemsDown = false}) {
-    if (element.graceNotes.isEmpty) return;
+    if (element.graceNotes.isEmpty) return null;
     const graceScale = _graceScale;
     final headBox = meta.bBoxOf(SmuflGlyph.noteheadBlack);
     final graceHeadWidth = headBox.width * graceScale;
@@ -2013,8 +2044,20 @@ class _LayoutBuilder {
     final anchor = stemsDown
         ? anchors.stemDownNW ?? const Point(0.0, 0.0)
         : anchors.stemUpSE ?? Point(headBox.width, 0.0);
-    var isFirst = true;
-    for (var g = 0; g < element.graceNotes.length; g++) {
+    final dir = stemsDown ? 1.0 : -1.0; // stem direction on screen
+    final firstX = _x;
+    // A grace stem is the scaled ordinary stem: 0.6 × the stem length, from
+    // the head's centre.
+    final stemLength = s.stemLength * graceScale;
+    final stemThickness = s.stemThickness;
+    final count = element.graceNotes.length;
+    final beamed = count >= 2;
+
+    // Heads, ledger lines and tie starts, left to right.
+    final ys = <double>[];
+    final stemXs = <double>[];
+    final attachYs = <double>[];
+    for (var g = 0; g < count; g++) {
       final pitch = element.graceNotes[g];
       final position = pitch.staffPosition(_clef);
       final y = _yOf(position);
@@ -2029,35 +2072,11 @@ class _LayoutBuilder {
         scale: graceScale,
         elementId: id,
       );
-      final stemX = stemsDown
-          ? _x + anchor.x * graceScale + s.stemThickness / 2
-          : _x + anchor.x * graceScale - s.stemThickness / 2;
-      final tipY = stemsDown ? y + 2.2 : y - 2.2;
-      _addLine(
-        Point(stemX, y - anchor.y * graceScale),
-        Point(stemX, tipY),
-        s.stemThickness,
-        elementId: id,
-      );
-      _addGlyph(
-        stemsDown ? SmuflGlyph.flag8thDown : SmuflGlyph.flag8thUp,
-        stemX - s.stemThickness / 2,
-        tipY,
-        scale: graceScale,
-        elementId: id,
-      );
-      if (isFirst) {
-        if (element.graceStyle == GraceStyle.acciaccatura) {
-          final dir = stemsDown ? -1 : 1;
-          _addLine(
-            Point(stemX - 0.55, tipY + 1.5 * dir),
-            Point(stemX + 0.65, tipY + 0.6 * dir),
-            0.12,
-            elementId: id,
-          );
-        }
-        isFirst = false;
-      }
+      ys.add(y);
+      stemXs.add(stemsDown
+          ? _x + anchor.x * graceScale + stemThickness / 2
+          : _x + anchor.x * graceScale - stemThickness / 2);
+      attachYs.add(y - anchor.y * graceScale);
       for (var q = -2; q >= position; q -= 2) {
         _addLine(
           Point(_x - 0.25, _yOf(q)),
@@ -2077,8 +2096,90 @@ class _LayoutBuilder {
       _x += graceHeadWidth + 0.5;
     }
     _x += 0.3;
-  }
+    final slurStart = (x: firstX + graceHeadWidth / 2, y: ys.first);
 
+    // Stem tips: the scaled stem length for a single grace; along a straight
+    // grace beam for a group, no stem shorter than the scaled length.
+    final tips = [for (final y in ys) y + dir * stemLength];
+    double Function(double x)? beamAt;
+    if (beamed) {
+      final x0 = stemXs.first, x1 = stemXs.last;
+      // Follow the heads, at most one space of rise over the group.
+      final rise = (tips.last - tips.first).clamp(-1.0, 1.0);
+      final slope = x1 == x0 ? 0.0 : rise / (x1 - x0);
+      // The beam stands clear of every stem's own tip.
+      var c = tips.first;
+      for (var g = 0; g < count; g++) {
+        final atG = tips[g] - slope * (stemXs[g] - x0);
+        c = stemsDown ? max(c, atG) : min(c, atG);
+      }
+      beamAt = (x) => c + slope * (x - x0);
+      for (var g = 0; g < count; g++) {
+        tips[g] = beamAt(stemXs[g]);
+      }
+    }
+
+    for (var g = 0; g < count; g++) {
+      _addLine(
+        Point(stemXs[g], attachYs[g]),
+        Point(stemXs[g], tips[g]),
+        stemThickness,
+        elementId: id,
+      );
+      if (!beamed) {
+        _addGlyph(
+          stemsDown ? SmuflGlyph.flag8thDown : SmuflGlyph.flag8thUp,
+          stemXs[g] - stemThickness / 2,
+          tips[g],
+          scale: graceScale,
+          elementId: id,
+        );
+      }
+    }
+
+    if (beamAt != null) {
+      // The beam's outer edge is at the stem tips; its body lies toward the
+      // heads. Each end covers its outer stem's edge.
+      final thickness = s.beamThickness * graceScale;
+      final halfStem = stemThickness / 2;
+      final left = stemXs.first - halfStem, right = stemXs.last + halfStem;
+      final start = Point(left, beamAt(left) - dir * thickness / 2);
+      final end = Point(right, beamAt(right) - dir * thickness / 2);
+      _primitives.add(
+        BeamPrimitive(start, end, thickness: thickness, elementId: id),
+      );
+      final h = thickness / 2;
+      _expand(
+        id,
+        left,
+        min(start.y, end.y) - h,
+        right,
+        max(start.y, end.y) + h,
+      );
+    }
+
+    if (element.graceStyle == GraceStyle.acciaccatura) {
+      final stemX = stemXs.first, tipY = tips.first;
+      if (beamed) {
+        // Up through the first stem and on through the beam, beyond it.
+        _addLine(
+          Point(stemX - 0.5, tipY - 1.3 * dir),
+          Point(stemX + 0.7, tipY + 0.3 * dir),
+          0.12,
+          elementId: id,
+        );
+      } else {
+        // Through the stem and the flag.
+        _addLine(
+          Point(stemX - 0.55, tipY - 1.5 * dir),
+          Point(stemX + 0.65, tipY - 0.6 * dir),
+          0.12,
+          elementId: id,
+        );
+      }
+    }
+    return slurStart;
+  }
   /// Rule 8 helper: ledger lines at even positions outside the staff.
   void _addLedgerLines(
     int bottomPosition,
