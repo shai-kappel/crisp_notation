@@ -46,20 +46,21 @@ void main() {
     expect(columnsOf(accidentals), hasLength(2));
   });
 
-  test('zigzag: top accidental sits closest to the note', () {
+  test('zigzag: bottom accidental sits closest to the note (U1, abcjs)', () {
     final accidentals =
         accidentalsOf(layoutOf(Score.simple(notes: 'f#4+a#4:h')));
-    // Rightmost (largest x) = higher staff position (a#4).
+    // Rightmost (largest x) = lower staff position (f#4): the lowest
+    // accidental takes the column nearest the chord, as abcjs does.
     final rightmost =
         accidentals.reduce((a, b) => a.position.x > b.position.x ? a : b);
     final leftmost =
         accidentals.reduce((a, b) => a.position.x < b.position.x ? a : b);
-    expect(rightmost.position.y, lessThan(leftmost.position.y));
+    expect(rightmost.position.y, greaterThan(leftmost.position.y));
   });
 
   test('dense triple stack: outer pair shares, middle takes column two', () {
     // c#4 (1), e#4? — use c#4, d#5, c#6: positions 1, 9, 15.
-    // 1↔9 = 8 ≥ 6 share; but zigzag order is c#6, c#4, d#5:
+    // 1↔9 = 8 ≥ 6 share; but zigzag order is c#4, c#6, d#5:
     // c#6 col 0, c#4 col 0 (14 apart), d#5 col 0 too (6 and 8 apart).
     final one = accidentalsOf(layoutOf(Score.simple(notes: 'c#4+d#5+c#6:h')));
     expect(columnsOf(one), hasLength(1));

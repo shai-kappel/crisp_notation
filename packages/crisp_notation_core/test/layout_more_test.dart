@@ -149,15 +149,16 @@ void main() {
   });
 
   group('accidental engraving details', () {
-    test('the top accidental of a stack sits closest to the chord', () {
+    test('the bottom accidental of a stack sits closest to the chord', () {
       final layout = layoutOf(Score.simple(notes: 'f#4+g#4:q'));
       final sharps = taggedAccidentalsOf(layout);
       expect(sharps, hasLength(2));
       final byY = {for (final g in sharps) g.position.y: g.position.x};
       final topY = byY.keys.reduce((a, b) => a < b ? a : b);
       final bottomY = byY.keys.reduce((a, b) => a > b ? a : b);
-      expect(byY[topY], greaterThan(byY[bottomY]!),
-          reason: 'top accidental in the column nearest the noteheads');
+      expect(byY[bottomY], greaterThan(byY[topY]!),
+          reason: 'bottom accidental in the column nearest the noteheads '
+              '(U1, abcjs)');
     });
 
     test('sharp, natural, re-sharp within one measure all draw', () {

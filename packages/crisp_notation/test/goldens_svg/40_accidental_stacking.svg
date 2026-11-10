@@ -13,9 +13,9 @@
 <text x="5.93" y="3.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="5.93" y="0" font-family="Bravura" font-size="4" stroke="none"></text>
 <line x1="5.99" y1="0.168" x2="5.99" y2="7" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="12.272" y="4" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="11.026" y="4" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="9.78" y="4.5" font-family="Bravura" font-size="4" stroke="none"></text>
-<text x="11.026" y="5" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="12.272" y="5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="13.518" y="5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="14.578" y="4.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="13.518" y="4" font-family="Bravura" font-size="4" stroke="none"></text>
@@ -23,9 +23,9 @@
 <line x1="14.638" y1="4.832" x2="14.638" y2="0.5" stroke-width="0.12" stroke-linecap="butt"/>
 <line x1="17.568" y1="0" x2="17.568" y2="4" stroke-width="0.16" stroke-linecap="butt"/>
 <text x="22.466" y="0" font-family="Bravura" font-size="4" stroke="none"></text>
-<text x="21.22" y="1.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="19.974" y="1.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="18.728" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
-<text x="19.974" y="3.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="21.22" y="3.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="22.466" y="5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="23.712" y="5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="23.712" y="3.5" font-family="Bravura" font-size="4" stroke="none"></text>
@@ -35,8 +35,8 @@
 <line x1="23.312" y1="5" x2="25.8" y2="5" stroke-width="0.16" stroke-linecap="butt"/>
 <line x1="28.512" y1="0" x2="28.512" y2="4" stroke-width="0.16" stroke-linecap="butt"/>
 <text x="31.98" y="1" font-family="Bravura" font-size="4" stroke="none"></text>
-<text x="30.826" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
-<text x="29.672" y="4" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="29.672" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<text x="30.826" y="4" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="31.98" y="5.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="33.134" y="5.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="33.134" y="4" font-family="Bravura" font-size="4" stroke="none"></text>

@@ -856,6 +856,99 @@ class _LayoutBuilder {
 
   // ---------------------------------------------------------------- measure
 
+  /// R10 beaming: a tuplet whose notes are all beamable is beamed as one
+  /// group across its whole span, beat boundaries inside the span
+  /// notwithstanding; the bracket rule is unchanged.
+  ///
+  /// Applies to meter beaming of a single-voice measure only: a score that
+  /// states its beams keeps them. A voice-1 span qualifies when it holds no
+  /// other span, every note in it can carry a beam (eighth or shorter, not
+  /// cross-staff, not on a cross-measure, feathered or slanted beam), and it
+  /// has at least two notes. Rests inside the span are skipped, as meter
+  /// beaming skips them. The span's notes replace whatever groups the meter
+  /// split them into.
+  List<_BeamGroup> _beamTupletsWhole(
+      Measure measure, List<_BeamGroup> groups) {
+    if (score.beamsExplicit) return groups;
+    final elements = measure.elements;
+    final spans = [
+      for (final span in measure.tuplets)
+        if (span.voice == 0) span,
+    ];
+    if (spans.isEmpty) return groups;
+    final onsets = <Fraction>[];
+    var onset = _metricStart(measure);
+    for (var i = 0; i < elements.length; i++) {
+      onsets.add(onset);
+      onset += measure.effectiveDurationAt(i);
+    }
+    final result = [...groups];
+    for (final span in spans) {
+      final holdsAnother = spans.any((o) =>
+          !identical(o, span) &&
+          o != span &&
+          span.startIndex <= o.startIndex &&
+          o.endIndex <= span.endIndex);
+      if (holdsAnother) continue;
+      final run = <int>[];
+      var beamable = true;
+      for (var i = span.startIndex; i <= span.endIndex; i++) {
+        final element = elements[i];
+        if (element is RestElement) continue;
+        if (element is! NoteElement ||
+            _LayoutBuilder._beamCountOf(element.duration.base) < 1 ||
+            _isCrossStaff(element) ||
+            _crossBeamOf.containsKey(element.id) ||
+            _crossMeasureIds.contains(element.id)) {
+          beamable = false;
+          break;
+        }
+        run.add(i);
+      }
+      if (!beamable || run.length < 2) continue;
+      final overlapping = [
+        for (final g in result)
+          if (g.indices.any((i) => i >= span.startIndex && i <= span.endIndex))
+            g,
+      ];
+      if (overlapping.any((g) => g.feather != null || g.forcedSlant != null)) {
+        continue;
+      }
+      if (overlapping.length == 1 &&
+          overlapping.single.indices.length == run.length) {
+        continue; // already one beam over the whole span
+      }
+      // Stem direction as meter beaming picks it: a stated stem wins,
+      // otherwise the note farthest from the middle line decides.
+      bool? stated;
+      for (final i in run) {
+        if ((elements[i] as NoteElement).stemsDown case final down?) {
+          stated = down;
+          break;
+        }
+      }
+      var maxAbove = -100;
+      var maxBelow = -100;
+      for (final i in run) {
+        for (final pitch in (elements[i] as NoteElement).pitches) {
+          final p = pitch.staffPosition(_clef);
+          if (p - 4 > maxAbove) maxAbove = p - 4;
+          if (4 - p > maxBelow) maxBelow = 4 - p;
+        }
+      }
+      final merged = _BeamGroup(run,
+          onsets: [for (final i in run) onsets[i]],
+          stemsDown: stated ?? maxAbove >= maxBelow);
+      var at = overlapping.isEmpty
+          ? result.indexWhere((g) => g.indices.first > span.startIndex)
+          : result.indexOf(overlapping.first);
+      if (at < 0) at = result.length;
+      result.removeWhere(overlapping.contains);
+      result.insert(min(at, result.length), merged);
+    }
+    return result;
+  }
+
   /// Whether [element]'s stem is deferred to the cross-staff beam pass.
   bool _isCrossStaff(NoteElement element) =>
       element.id != null && deferredStems.containsKey(element.id);
@@ -895,11 +988,14 @@ class _LayoutBuilder {
       _layoutMultiVoiceMeasure(measure, measureIndex);
       return;
     }
-    final groups = _computeBeamGroups(
-      measure.elements,
-      effectiveAt: measure.effectiveDurationAt,
-      tuplets: measure.tuplets,
-      start: _metricStart(measure),
+    final groups = _beamTupletsWhole(
+      measure,
+      _computeBeamGroups(
+        measure.elements,
+        effectiveAt: measure.effectiveDurationAt,
+        tuplets: measure.tuplets,
+        start: _metricStart(measure),
+      ),
     );
     final beamedIndex = <int, _BeamGroup>{
       for (final group in groups)
@@ -991,6 +1087,10 @@ class _LayoutBuilder {
       if (endX != null) _x = max(_x, measureContentStart + endX);
     }
 
+    // R10: the (first, last) element indices of every beam group drawn in
+    // this measure, so a tuplet span that one beam covers end to end drops
+    // its bracket and keeps its digit.
+    final drawnBeams = <(int, int)>{};
     for (final group in groups) {
       final notes = deferred[group];
       if (notes != null && notes.length >= 2) {
@@ -1001,12 +1101,13 @@ class _LayoutBuilder {
           feather: group.feather,
           forcedSlant: group.forcedSlant,
         );
+        drawnBeams.add((group.indices.first, group.indices.last));
       }
     }
     _layoutArticulations(measure.elements, tieIndexOf);
     _layoutFingerings(measure.elements, tieIndexOf);
     _layoutArpeggios(measure.elements, tieIndexOf);
-    _layoutTuplets(measure, tieIndexOf);
+    _layoutTuplets(measure, tieIndexOf, drawnBeams: drawnBeams);
   }
 
   /// v0.4.1 / v0.4.4: a measure with two to four voices. Odd-indexed voices
@@ -1559,8 +1660,10 @@ class _LayoutBuilder {
   /// Rules 4–6, 8–11: noteheads, stem, flag, ledger lines, accidentals,
   /// dots, chord clustering. Returns deferred stem data when [deferStem].
   /// Assigns the accidentals in [shown] (each `(pitch, staff position, id)`) to
-  /// zigzag columns (outside-in; an accidental shares a column only when it
-  /// clears the others there by ≥ 6 staff positions) and returns the columns
+  /// zigzag columns (outside-in, lowest first, so the lowest accidental takes
+  /// the column nearest the notes, as abcjs does; an accidental shares a
+  /// column only when it clears the others there by ≥ 6 staff positions) and
+  /// returns the columns
   /// plus the total left-of-notehead width. Shared by single notes and the
   /// joint two-voice accidental layout.
   ({
@@ -1572,7 +1675,9 @@ class _LayoutBuilder {
     final shown = [...shownIn]..sort((a, b) => b.$2 - a.$2);
     final zigzag = <int>[];
     var lowIndex = 0, highIndex = shown.length - 1;
-    var fromTop = true;
+    // `shown` is sorted highest first: start the zigzag from its far end, the
+    // lowest accidental (owner ruling U1, 2026-11-08: "Match abcjs").
+    var fromTop = false;
     while (lowIndex <= highIndex) {
       zigzag.add(fromTop ? lowIndex++ : highIndex--);
       fromTop = !fromTop;
@@ -1674,7 +1779,12 @@ class _LayoutBuilder {
     // go left of its accidentals once those are placed, not at the column,
     // where they stood on the head.
     final graceLater = !gracesDrawn && noteXOverride != null;
-    if (!gracesDrawn && !graceLater) _layoutGraceNotes(element, id);
+    // Where this note's grace slur starts (see [_layoutGraceNotes]): drawn
+    // below, once the heads are placed, in this same call.
+    ({double x, double y})? graceSlurStart;
+    if (!gracesDrawn && !graceLater) {
+      graceSlurStart = _layoutGraceNotes(element, id);
+    }
 
     final base = element.duration.base;
     // Cue / ossia notes draw small: head, stem, flag and dots are scaled.
@@ -1724,26 +1834,30 @@ class _LayoutBuilder {
     // (`showAccidental`) was drawn a second time before that flag.
     final acc = _accidentalColumns(shown);
     // A stem-down chord with a second puts a head LEFT of the stem (rule 11
-    // below): reserve that head's width, and set the accidentals left of it.
+    // below) — and so does a stemless chord whose stem direction is down:
+    // reserve that head's width, and set the accidentals left of it.
     // Unreserved, the head overlapped whatever came before — the time
-    // signature, a barline, the previous note.
+    // signature, a barline, the previous note — and the accidentals.
     var hasSecond = false;
     for (var i = 1; i < positions.length; i++) {
       if (positions[i] - positions[i - 1] <= 1) hasSecond = true;
     }
-    final leftHead =
-        stemsDown && hasStem && hasSecond ? headWidth - s.stemThickness : 0.0;
+    final leftHead = stemsDown && hasSecond
+        ? (hasStem ? headWidth - s.stemThickness : headWidth)
+        : 0.0;
     final noteX = noteXOverride ?? (_x + acc.preWidth + leftHead);
     _drawAccidentalColumns(acc, noteX - leftHead);
     if (graceLater && element.graceNotes.isNotEmpty) {
       final x = _x;
       _x = noteX - leftHead - acc.preWidth - _graceWidth(element);
-      _layoutGraceNotes(element, id);
+      graceSlurStart = _layoutGraceNotes(element, id);
       _x = x;
     }
 
     // Rule 11: seconds are resolved by offsetting the interfering notehead
-    // to the other side of the stem. Walk from the stem's anchor end.
+    // to the other side of the stem. Walk from the stem's anchor end. A
+    // stemless chord follows its stem direction too: down puts the lower note
+    // of a second on the left, up the upper note on the right (abcjs).
     final columnX = List<double>.filled(positions.length, noteX);
     final flippedX = stemsDown
         ? noteX - headWidth + s.stemThickness
@@ -1758,7 +1872,9 @@ class _LayoutBuilder {
       // drew one head over the other — goes to the other side of the stem.
       if ((positions[current] - positions[previous]).abs() <= 1 &&
           columnX[previous] == noteX) {
-        columnX[current] = hasStem ? flippedX : noteX + headWidth;
+        columnX[current] = hasStem
+            ? flippedX
+            : (stemsDown ? noteX - headWidth : noteX + headWidth);
       }
     }
 
@@ -1825,6 +1941,24 @@ class _LayoutBuilder {
           Point(a.x + (b.x - a.x) * 0.7, a.y + (b.y - a.y) * 0.7 + 0.3),
           b,
           0.14,
+        );
+      }
+    }
+
+    // A grace slur, for either grace style: a small curve under the graces
+    // (their stems go up) from the first grace head to the principal's
+    // lowest head, ending left of that head, clear of a down-stem.
+    if (graceSlurStart != null) {
+      final (:x, :y) = graceSlurStart;
+      final x2 = columnX[0] - 0.1;
+      if (x2 > x + 0.1) {
+        final a = Point(x, y + 0.4), b = Point(x2, _yOf(positions[0]) + 0.5);
+        _addCurve(
+          a,
+          Point(a.x + (b.x - a.x) * 0.3, a.y + (b.y - a.y) * 0.3 + 0.35),
+          Point(a.x + (b.x - a.x) * 0.7, a.y + (b.y - a.y) * 0.7 + 0.35),
+          b,
+          0.12,
         );
       }
     }
@@ -1987,8 +2121,10 @@ class _LayoutBuilder {
   }
 
   /// v0.3.6: grace notes — a group of small (0.6×) eighths before the host
-  /// element, stems always up; an acciaccatura slashes the first stem, an
-  /// appoggiatura does not.
+  /// element, stems up. A single grace carries a flag; a group of two or
+  /// more is joined by a grace-scaled beam instead. An acciaccatura's slash
+  /// crosses the single grace's stem and flag, or a beamed group's first
+  /// stem and beam; an appoggiatura has none.
   static const _graceScale = 0.6;
 
   /// The width [_layoutGraceNotes] advances past [element]'s grace notes:
@@ -2003,9 +2139,15 @@ class _LayoutBuilder {
   /// [stemsDown], as the lower of two voices that both lead in with graces
   /// sets them (stems up, the lower voice's grace stems ran through the
   /// upper voice's grace heads).
-  void _layoutGraceNotes(NoteElement element, String? id,
+  ///
+  /// Returns where a grace slur to the principal starts: the first grace
+  /// head's centre x and y. Only the single-voice path ([_layoutNote], which
+  /// draws the principal's heads in the same call) draws that slur; the
+  /// multi-voice grid paths ignore the result, so no slur is ever left
+  /// waiting for a later note.
+  ({double x, double y})? _layoutGraceNotes(NoteElement element, String? id,
       {bool stemsDown = false}) {
-    if (element.graceNotes.isEmpty) return;
+    if (element.graceNotes.isEmpty) return null;
     const graceScale = _graceScale;
     final headBox = meta.bBoxOf(SmuflGlyph.noteheadBlack);
     final graceHeadWidth = headBox.width * graceScale;
@@ -2013,8 +2155,20 @@ class _LayoutBuilder {
     final anchor = stemsDown
         ? anchors.stemDownNW ?? const Point(0.0, 0.0)
         : anchors.stemUpSE ?? Point(headBox.width, 0.0);
-    var isFirst = true;
-    for (var g = 0; g < element.graceNotes.length; g++) {
+    final dir = stemsDown ? 1.0 : -1.0; // stem direction on screen
+    final firstX = _x;
+    // A grace stem is the scaled ordinary stem: 0.6 × the stem length, from
+    // the head's centre.
+    final stemLength = s.stemLength * graceScale;
+    final stemThickness = s.stemThickness;
+    final count = element.graceNotes.length;
+    final beamed = count >= 2;
+
+    // Heads, ledger lines and tie starts, left to right.
+    final ys = <double>[];
+    final stemXs = <double>[];
+    final attachYs = <double>[];
+    for (var g = 0; g < count; g++) {
       final pitch = element.graceNotes[g];
       final position = pitch.staffPosition(_clef);
       final y = _yOf(position);
@@ -2029,35 +2183,11 @@ class _LayoutBuilder {
         scale: graceScale,
         elementId: id,
       );
-      final stemX = stemsDown
-          ? _x + anchor.x * graceScale + s.stemThickness / 2
-          : _x + anchor.x * graceScale - s.stemThickness / 2;
-      final tipY = stemsDown ? y + 2.2 : y - 2.2;
-      _addLine(
-        Point(stemX, y - anchor.y * graceScale),
-        Point(stemX, tipY),
-        s.stemThickness,
-        elementId: id,
-      );
-      _addGlyph(
-        stemsDown ? SmuflGlyph.flag8thDown : SmuflGlyph.flag8thUp,
-        stemX - s.stemThickness / 2,
-        tipY,
-        scale: graceScale,
-        elementId: id,
-      );
-      if (isFirst) {
-        if (element.graceStyle == GraceStyle.acciaccatura) {
-          final dir = stemsDown ? -1 : 1;
-          _addLine(
-            Point(stemX - 0.55, tipY + 1.5 * dir),
-            Point(stemX + 0.65, tipY + 0.6 * dir),
-            0.12,
-            elementId: id,
-          );
-        }
-        isFirst = false;
-      }
+      ys.add(y);
+      stemXs.add(stemsDown
+          ? _x + anchor.x * graceScale + stemThickness / 2
+          : _x + anchor.x * graceScale - stemThickness / 2);
+      attachYs.add(y - anchor.y * graceScale);
       for (var q = -2; q >= position; q -= 2) {
         _addLine(
           Point(_x - 0.25, _yOf(q)),
@@ -2077,8 +2207,90 @@ class _LayoutBuilder {
       _x += graceHeadWidth + 0.5;
     }
     _x += 0.3;
-  }
+    final slurStart = (x: firstX + graceHeadWidth / 2, y: ys.first);
 
+    // Stem tips: the scaled stem length for a single grace; along a straight
+    // grace beam for a group, no stem shorter than the scaled length.
+    final tips = [for (final y in ys) y + dir * stemLength];
+    double Function(double x)? beamAt;
+    if (beamed) {
+      final x0 = stemXs.first, x1 = stemXs.last;
+      // Follow the heads, at most one space of rise over the group.
+      final rise = (tips.last - tips.first).clamp(-1.0, 1.0);
+      final slope = x1 == x0 ? 0.0 : rise / (x1 - x0);
+      // The beam stands clear of every stem's own tip.
+      var c = tips.first;
+      for (var g = 0; g < count; g++) {
+        final atG = tips[g] - slope * (stemXs[g] - x0);
+        c = stemsDown ? max(c, atG) : min(c, atG);
+      }
+      beamAt = (x) => c + slope * (x - x0);
+      for (var g = 0; g < count; g++) {
+        tips[g] = beamAt(stemXs[g]);
+      }
+    }
+
+    for (var g = 0; g < count; g++) {
+      _addLine(
+        Point(stemXs[g], attachYs[g]),
+        Point(stemXs[g], tips[g]),
+        stemThickness,
+        elementId: id,
+      );
+      if (!beamed) {
+        _addGlyph(
+          stemsDown ? SmuflGlyph.flag8thDown : SmuflGlyph.flag8thUp,
+          stemXs[g] - stemThickness / 2,
+          tips[g],
+          scale: graceScale,
+          elementId: id,
+        );
+      }
+    }
+
+    if (beamAt != null) {
+      // The beam's outer edge is at the stem tips; its body lies toward the
+      // heads. Each end covers its outer stem's edge.
+      final thickness = s.beamThickness * graceScale;
+      final halfStem = stemThickness / 2;
+      final left = stemXs.first - halfStem, right = stemXs.last + halfStem;
+      final start = Point(left, beamAt(left) - dir * thickness / 2);
+      final end = Point(right, beamAt(right) - dir * thickness / 2);
+      _primitives.add(
+        BeamPrimitive(start, end, thickness: thickness, elementId: id),
+      );
+      final h = thickness / 2;
+      _expand(
+        id,
+        left,
+        min(start.y, end.y) - h,
+        right,
+        max(start.y, end.y) + h,
+      );
+    }
+
+    if (element.graceStyle == GraceStyle.acciaccatura) {
+      final stemX = stemXs.first, tipY = tips.first;
+      if (beamed) {
+        // Up through the first stem and on through the beam, beyond it.
+        _addLine(
+          Point(stemX - 0.5, tipY - 1.3 * dir),
+          Point(stemX + 0.7, tipY + 0.3 * dir),
+          0.12,
+          elementId: id,
+        );
+      } else {
+        // Through the stem and the flag.
+        _addLine(
+          Point(stemX - 0.55, tipY - 1.5 * dir),
+          Point(stemX + 0.65, tipY - 0.6 * dir),
+          0.12,
+          elementId: id,
+        );
+      }
+    }
+    return slurStart;
+  }
   /// Rule 8 helper: ledger lines at even positions outside the staff.
   void _addLedgerLines(
     int bottomPosition,

@@ -11,33 +11,36 @@
 <text x="4.702" y="1" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="4.604" y="3" font-family="Bravura" font-size="4" stroke="none"></text>
 <text x="7.404" y="3" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="8.052" y1="2.899" x2="8.052" y2="0.8" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="7.992" y="0.8" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="7.502" y1="2.3" x2="8.702" y2="1.4" stroke-width="0.12" stroke-linecap="butt"/>
+<line x1="8.052" y1="2.899" x2="8.052" y2="0.9" stroke-width="0.12" stroke-linecap="butt"/>
+<text x="7.992" y="0.9" font-family="Bravura" font-size="2.4" stroke="none"></text>
+<line x1="7.502" y1="2.4" x2="8.702" y2="1.5" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="8.912" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<path d="M 7.758 3.4 C 8.074 3.63 8.496 3.47 8.812 3" fill="none" stroke-width="0.12"/>
 <line x1="10.032" y1="2.332" x2="10.032" y2="-1" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="12.212" y="3.5" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="12.86" y1="3.399" x2="12.86" y2="1.3" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="12.8" y="1.3" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="12.31" y1="2.8" x2="13.51" y2="1.9" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="13.42" y="3" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="14.068" y1="2.899" x2="14.068" y2="0.8" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="14.008" y="0.8" font-family="Bravura" font-size="2.4" stroke="none"></text>
+<line x1="12.86" y1="3.399" x2="12.86" y2="1.4" stroke-width="0.12" stroke-linecap="butt"/>
+<line x1="14.068" y1="2.899" x2="14.068" y2="0.9" stroke-width="0.12" stroke-linecap="butt"/>
+<polygon points="12.8,1.425 14.128,0.875 14.128,1.175 12.8,1.725" stroke="none"/>
+<line x1="12.36" y1="2.7" x2="13.56" y2="1.1" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="14.928" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<path d="M 12.566 3.9 C 13.245 3.98 14.149 3.62 14.828 3" fill="none" stroke-width="0.12"/>
 <line x1="16.048" y1="2.332" x2="16.048" y2="-1" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="18.528" y="2" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="19.176" y1="1.899" x2="19.176" y2="-0.2" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="19.116" y="-0.2" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="18.626" y1="1.3" x2="19.826" y2="0.4" stroke-width="0.12" stroke-linecap="butt"/>
+<line x1="19.176" y1="1.899" x2="19.176" y2="-0.1" stroke-width="0.12" stroke-linecap="butt"/>
+<text x="19.116" y="-0.1" font-family="Bravura" font-size="2.4" stroke="none"></text>
+<line x1="18.626" y1="1.4" x2="19.826" y2="0.5" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="20.036" y="1.5" font-family="Bravura" font-size="4" stroke="none"></text>
+<path d="M 18.882 2.4 C 19.198 2.63 19.62 2.47 19.936 2" fill="none" stroke-width="0.12"/>
 <line x1="20.096" y1="1.668" x2="20.096" y2="5" stroke-width="0.12" stroke-linecap="butt"/>
 <line x1="23.336" y1="0" x2="23.336" y2="4" stroke-width="0.16" stroke-linecap="butt"/>
 <text x="24.496" y="5" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="25.144" y1="4.899" x2="25.144" y2="2.8" stroke-width="0.12" stroke-linecap="butt"/>
-<text x="25.084" y="2.8" font-family="Bravura" font-size="2.4" stroke="none"></text>
-<line x1="24.594" y1="4.3" x2="25.794" y2="3.4" stroke-width="0.12" stroke-linecap="butt"/>
 <line x1="24.246" y1="5" x2="25.454" y2="5" stroke-width="0.16" stroke-linecap="butt"/>
+<line x1="25.144" y1="4.899" x2="25.144" y2="2.9" stroke-width="0.12" stroke-linecap="butt"/>
+<text x="25.084" y="2.9" font-family="Bravura" font-size="2.4" stroke="none"></text>
+<line x1="24.594" y1="4.4" x2="25.794" y2="3.5" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="26.004" y="3" font-family="Bravura" font-size="4" stroke="none"></text>
+<path d="M 24.85 5.4 C 25.166 5.18 25.588 4.42 25.904 3.5" fill="none" stroke-width="0.12"/>
 <line x1="27.124" y1="2.832" x2="27.124" y2="-0.5" stroke-width="0.12" stroke-linecap="butt"/>
 <text x="27.534" y="2.5" font-family="Bravura" font-size="4" stroke="none"></text>
 <line x1="30.493" y1="0" x2="30.493" y2="4" stroke-width="0.16" stroke-linecap="butt"/>
