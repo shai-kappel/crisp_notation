@@ -1660,8 +1660,10 @@ class _LayoutBuilder {
   /// Rules 4–6, 8–11: noteheads, stem, flag, ledger lines, accidentals,
   /// dots, chord clustering. Returns deferred stem data when [deferStem].
   /// Assigns the accidentals in [shown] (each `(pitch, staff position, id)`) to
-  /// zigzag columns (outside-in; an accidental shares a column only when it
-  /// clears the others there by ≥ 6 staff positions) and returns the columns
+  /// zigzag columns (outside-in, lowest first, so the lowest accidental takes
+  /// the column nearest the notes, as abcjs does; an accidental shares a
+  /// column only when it clears the others there by ≥ 6 staff positions) and
+  /// returns the columns
   /// plus the total left-of-notehead width. Shared by single notes and the
   /// joint two-voice accidental layout.
   ({
@@ -1673,7 +1675,9 @@ class _LayoutBuilder {
     final shown = [...shownIn]..sort((a, b) => b.$2 - a.$2);
     final zigzag = <int>[];
     var lowIndex = 0, highIndex = shown.length - 1;
-    var fromTop = true;
+    // `shown` is sorted highest first: start the zigzag from its far end, the
+    // lowest accidental (owner ruling U1, 2026-11-08: "Match abcjs").
+    var fromTop = false;
     while (lowIndex <= highIndex) {
       zigzag.add(fromTop ? lowIndex++ : highIndex--);
       fromTop = !fromTop;
@@ -1830,15 +1834,17 @@ class _LayoutBuilder {
     // (`showAccidental`) was drawn a second time before that flag.
     final acc = _accidentalColumns(shown);
     // A stem-down chord with a second puts a head LEFT of the stem (rule 11
-    // below): reserve that head's width, and set the accidentals left of it.
+    // below) — and so does a stemless chord whose stem direction is down:
+    // reserve that head's width, and set the accidentals left of it.
     // Unreserved, the head overlapped whatever came before — the time
-    // signature, a barline, the previous note.
+    // signature, a barline, the previous note — and the accidentals.
     var hasSecond = false;
     for (var i = 1; i < positions.length; i++) {
       if (positions[i] - positions[i - 1] <= 1) hasSecond = true;
     }
-    final leftHead =
-        stemsDown && hasStem && hasSecond ? headWidth - s.stemThickness : 0.0;
+    final leftHead = stemsDown && hasSecond
+        ? (hasStem ? headWidth - s.stemThickness : headWidth)
+        : 0.0;
     final noteX = noteXOverride ?? (_x + acc.preWidth + leftHead);
     _drawAccidentalColumns(acc, noteX - leftHead);
     if (graceLater && element.graceNotes.isNotEmpty) {
@@ -1849,7 +1855,9 @@ class _LayoutBuilder {
     }
 
     // Rule 11: seconds are resolved by offsetting the interfering notehead
-    // to the other side of the stem. Walk from the stem's anchor end.
+    // to the other side of the stem. Walk from the stem's anchor end. A
+    // stemless chord follows its stem direction too: down puts the lower note
+    // of a second on the left, up the upper note on the right (abcjs).
     final columnX = List<double>.filled(positions.length, noteX);
     final flippedX = stemsDown
         ? noteX - headWidth + s.stemThickness
@@ -1864,7 +1872,9 @@ class _LayoutBuilder {
       // drew one head over the other — goes to the other side of the stem.
       if ((positions[current] - positions[previous]).abs() <= 1 &&
           columnX[previous] == noteX) {
-        columnX[current] = hasStem ? flippedX : noteX + headWidth;
+        columnX[current] = hasStem
+            ? flippedX
+            : (stemsDown ? noteX - headWidth : noteX + headWidth);
       }
     }
 
